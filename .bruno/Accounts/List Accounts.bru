@@ -1,0 +1,32 @@
+meta {
+  name: List Accounts
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/accounts
+  body: none
+  auth: none
+}
+
+script:post-response {
+  const body = res.getBody();
+  if (Array.isArray(body) && body.length > 0) {
+    bru.setVar("accountId", body[0].id);
+  }
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("returns an array of accounts", function() {
+    expect(res.getBody()).to.be.an("array").that.is.not.empty;
+    expect(res.getBody()[0]).to.have.property("id");
+  });
+}
+
+docs {
+  Lists all accounts. Stores the first account's id in `accountId`.
+}

@@ -1,0 +1,40 @@
+meta {
+  name: Delete Reservation
+  type: http
+  seq: 8
+}
+
+delete {
+  url: {{baseUrl}}/accounts/{{accountId}}/reservations/{{reservationId}}
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dedup-ID: {{dedupId}}
+}
+
+script:pre-request {
+  function uuid() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+  bru.setVar("dedupId", uuid());
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("reservation is released", function() {
+    const body = res.getBody();
+    expect(body.id).to.equal(bru.getVar("reservationId"));
+    expect(body.deleted_at).to.not.be.null;
+  });
+}
+
+docs {
+  Soft-deletes (releases) a single reservation. Requires `X-Dedup-ID`.
+}

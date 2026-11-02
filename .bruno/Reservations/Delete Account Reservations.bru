@@ -1,0 +1,40 @@
+meta {
+  name: Delete Account Reservations
+  type: http
+  seq: 9
+}
+
+delete {
+  url: {{baseUrl}}/accounts/{{accountId}}/reservations
+  body: none
+  auth: none
+}
+
+headers {
+  X-Dedup-ID: {{dedupId}}
+}
+
+script:pre-request {
+  function uuid() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+  bru.setVar("dedupId", uuid());
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("reports released count", function() {
+    const body = res.getBody();
+    expect(body.account_id).to.equal(bru.getVar("accountId"));
+    expect(body.released).to.be.a("number");
+  });
+}
+
+docs {
+  Soft-deletes **every** active reservation of the account. Requires `X-Dedup-ID`.
+}

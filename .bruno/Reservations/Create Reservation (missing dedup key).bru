@@ -1,0 +1,23 @@
+meta {
+  name: Create Reservation (missing dedup key)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/accounts/{{accountId}}/reservations
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "size": 1048576
+  }
+}
+
+tests {
+  test("status 400", function() {
+    expect(res.getStatus()).to.equal(400);
+  });
+}

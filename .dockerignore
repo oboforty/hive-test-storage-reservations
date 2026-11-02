@@ -1,0 +1,11 @@
+.git
+.gitignore
+.vscode
+*.log
+tmp/
+bin/
+data/
+logs/
+.env
+.env.override
+hivesettings.json

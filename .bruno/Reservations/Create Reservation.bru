@@ -1,0 +1,62 @@
+meta {
+  name: Create Reservation
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/accounts/{{accountId}}/reservations
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dedup-ID: {{dedupId}}
+}
+
+body:json {
+  {
+    "size": 1048576,
+    "debug_log": "created from bruno"
+  }
+}
+
+script:pre-request {
+  function uuid() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+  bru.setVar("dedupId", uuid());
+}
+
+script:post-response {
+  if (res.getStatus() === 201) {
+    bru.setVar("reservationId", res.getBody().id);
+  }
+}
+
+tests {
+  test("status 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  test("returns the reservation", function() {
+    const body = res.getBody();
+    expect(body.account_id).to.equal(bru.getVar("accountId"));
+    expect(body.size).to.equal(1048576);
+    expect(body.dedup_id).to.equal(bru.getVar("dedupId"));
+  });
+  test("sets Location header", function() {
+    expect(res.getHeader("location")).to.equal(
+      "/accounts/" + bru.getVar("accountId") + "/reservations/" + res.getBody().id
+    );
+  });
+}
+
+docs {
+  `size` (bytes, > 0) is required; `debug_log` is optional. Unknown fields are rejected.
+
+  A fresh `X-Dedup-ID` is generated on every send and stored in `dedupId`;
+  the created id is stored in `reservationId`.
+}

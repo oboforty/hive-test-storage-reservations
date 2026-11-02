@@ -1,0 +1,20 @@
+meta {
+  name: Get Reservation
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/accounts/{{accountId}}/reservations/{{reservationId}}
+  body: none
+  auth: none
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("returns the requested reservation", function() {
+    expect(res.getBody().id).to.equal(bru.getVar("reservationId"));
+  });
+}

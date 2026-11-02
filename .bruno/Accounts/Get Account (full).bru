@@ -1,0 +1,26 @@
+meta {
+  name: Get Account (full)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/accounts/{{accountId}}?full=1
+  body: none
+  auth: none
+}
+
+params:query {
+  full: 1
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("includes usage and active reservations", function() {
+    const body = res.getBody();
+    expect(body).to.have.property("free_storage");
+    expect(body).to.have.property("active_reservations");
+  });
+}

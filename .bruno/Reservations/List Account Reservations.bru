@@ -1,0 +1,31 @@
+meta {
+  name: List Account Reservations
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/accounts/{{accountId}}/reservations?include_deleted=0
+  body: none
+  auth: none
+}
+
+params:query {
+  include_deleted: 0
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("all reservations belong to the account", function() {
+    const accountId = bru.getVar("accountId");
+    res.getBody().forEach(function(r) {
+      expect(r.account_id).to.equal(accountId);
+    });
+  });
+}
+
+docs {
+  Set `include_deleted` to `1` to also list released (soft-deleted) reservations.
+}

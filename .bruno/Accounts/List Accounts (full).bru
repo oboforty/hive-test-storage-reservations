@@ -1,0 +1,32 @@
+meta {
+  name: List Accounts (full)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/accounts?full=1
+  body: none
+  auth: none
+}
+
+params:query {
+  full: 1
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("includes storage usage", function() {
+    const acc = res.getBody()[0];
+    expect(acc).to.have.property("reserved_storage");
+    expect(acc).to.have.property("free_storage");
+    expect(acc).to.have.property("used_percent");
+  });
+}
+
+docs {
+  `full=1` adds storage usage (reserved/free/used_percent) but not the
+  reservation list — use *Get Account (full)* for that.
+}

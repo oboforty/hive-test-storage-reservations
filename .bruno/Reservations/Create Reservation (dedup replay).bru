@@ -1,0 +1,41 @@
+meta {
+  name: Create Reservation (dedup replay)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/accounts/{{accountId}}/reservations
+  body: json
+  auth: none
+}
+
+headers {
+  X-Dedup-ID: {{dedupId}}
+}
+
+body:json {
+  {
+    "size": 1048576,
+    "debug_log": "created from bruno"
+  }
+}
+
+tests {
+  test("status 201", function() {
+    expect(res.getStatus()).to.equal(201);
+  });
+  test("response is replayed", function() {
+    expect(res.getHeader("x-dedup-replayed")).to.equal("true");
+  });
+  test("same reservation as the original", function() {
+    expect(res.getBody().id).to.equal(bru.getVar("reservationId"));
+  });
+}
+
+docs {
+  Re-sends *Create Reservation* with the same `X-Dedup-ID` and identical body.
+  The server must replay the stored response instead of creating a second
+  reservation. Run *Create Reservation* first. Changing the body here should
+  make the server reject the reused key.
+}

@@ -1,0 +1,25 @@
+# golang
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+.env
+__debug_bin*
+
+# ide
+.VSCodeCounter
+.vscode
+
+# project
+tmp/
+*.log
+
+# runtime data
+data/
+logs/
+hivesettings.json

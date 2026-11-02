@@ -1,0 +1,24 @@
+meta {
+  name: List Reservations
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/reservations
+  body: none
+  auth: none
+}
+
+tests {
+  test("status 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("returns an array", function() {
+    expect(res.getBody()).to.be.an("array");
+  });
+}
+
+docs {
+  Lists active reservations across all accounts.
+}

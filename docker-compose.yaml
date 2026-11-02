@@ -1,0 +1,29 @@
+
+services:
+  go-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hive-storage-reserver
+    # migrate + idempotent seed on every start
+    command: ["./server", "serve", "-seed"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_PATH: /app/data/hive.db
+      LOG_FILE: /app/logs/app.log
+      # keep the cached HIVE_API settings across container rebuilds
+      HIVE_SETTINGS_FILE: /app/data/hivesettings.json
+      HTTP_ADDR: ":8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - hive-data:/app/data
+      - hive-logs:/app/logs
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+volumes:
+  hive-data:
+  hive-logs:
