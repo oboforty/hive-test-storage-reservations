@@ -67,8 +67,12 @@ Then after making a decision on using deduplication headers, I wrote another spe
 
 ### Missing work
 
-- 
-
+- Health check does nothing, really. It could display warning/failure in case the HIVE_API is unreachable, in case of a DB error (though it's a local sqlite), or for reservation inconsistencies.
+- Some DB fields are redundant/useless, but those are not part of the core logic.
+- To make it production ready, I wanted to add a `storage_history` table as an event log, so that the service could be restored in case of a major logical malfunction. It could also serve for production debugging, event replay, and we could add logical clock to it.
+- Code security is a deep expertise - i personally do my best and then pass the review to a contractor or internal security teams - so i'm not 100% sure whether obvious vulnerabilities exist in this service, other than the scopes not covered by the homework (auth).
+- (continuation of the above) perhaps a HMAC verification could have been added, not only for the client payload, but for the upload's payload as well. Similarly to how AWS S3 would handle signed url uploads (from the frontend).
+- OpenAPI specs would have also been nice to add
 
 ----
 

@@ -15,8 +15,6 @@ const (
 
 	SeedUsername   = "hive"
 	SeedMaxStorage = 100 * GB
-	SeedDedupKey   = "1"
-	seedDedupHash  = "seed-placeholder"
 )
 
 // Seed inserts the initial data. It is idempotent: running it twice does not
@@ -38,18 +36,6 @@ func Seed(ctx context.Context, db *sql.DB, log *slog.Logger, maxParallelChunks i
 				"max_storage", SeedMaxStorage, "max_parallel_chunks", maxParallelChunks)
 		}
 
-		// @TODO: TEMPORAL CODE --
-		res, err = tx.ExecContext(ctx, `
-			INSERT INTO dedup (key, request_hash, created_at, completed_at)
-			VALUES (?, ?, ?, ?)
-			ON CONFLICT (key) DO NOTHING`,
-			SeedDedupKey, seedDedupHash, now, now)
-		if err != nil {
-			return fmt.Errorf("seed dedup: %w", err)
-		}
-		if n, _ := res.RowsAffected(); n > 0 {
-			log.InfoContext(ctx, "seeded dedup placeholder", "key", SeedDedupKey)
-		}
 		return nil
 	})
 }
