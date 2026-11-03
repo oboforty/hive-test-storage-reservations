@@ -28,7 +28,7 @@ func TestFromFile(t *testing.T) {
 	if err := os.WriteFile(file, []byte(`{"default_max_parallel_chunks": 7}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	srv, calls := api(t, http.StatusOK, `{"default_max_parallel_chunks": 9}`)
+	srv, calls := api(t, http.StatusOK, `{"ENV": "dev", "MAX_PARALLEL_CHUNKS": 9}`)
 
 	got := GetDefaultMaxParallelChunks(context.Background(), Sources{File: file, APIURL: srv.URL, Fallback: 5}, nil)
 	if got != 7 {
@@ -41,7 +41,7 @@ func TestFromFile(t *testing.T) {
 
 func TestFromAPIAndCached(t *testing.T) {
 	file := filepath.Join(t.TempDir(), DefaultFile)
-	srv, calls := api(t, http.StatusOK, `{"default_max_parallel_chunks": 9}`)
+	srv, calls := api(t, http.StatusOK, `{"ENV": "dev", "MAX_PARALLEL_CHUNKS": 9}`)
 	src := Sources{File: file, APIURL: srv.URL, Fallback: 5}
 
 	if got := GetDefaultMaxParallelChunks(context.Background(), src, nil); got != 9 {
@@ -69,7 +69,7 @@ func TestInvalidFileFallsThroughToAPI(t *testing.T) {
 	if err := os.WriteFile(file, []byte(`{"default_max_parallel_chunks": 0}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	srv, _ := api(t, http.StatusOK, `{"default_max_parallel_chunks": 3}`)
+	srv, _ := api(t, http.StatusOK, `{"ENV": "dev", "MAX_PARALLEL_CHUNKS": 3}`)
 	if got := GetDefaultMaxParallelChunks(context.Background(), Sources{File: file, APIURL: srv.URL, Fallback: 5}, nil); got != 3 {
 		t.Errorf("got %d, want 3", got)
 	}
@@ -80,10 +80,10 @@ func TestAPIFailuresUseFallback(t *testing.T) {
 		status int
 		body   string
 	}{
-		"404":          {http.StatusNotFound, `{"default_max_parallel_chunks": 9}`},
+		"404":          {http.StatusNotFound, `{"MAX_PARALLEL_CHUNKS": 9}`},
 		"500":          {http.StatusInternalServerError, ``},
 		"invalid json": {http.StatusOK, `nope`},
-		"zero value":   {http.StatusOK, `{"default_max_parallel_chunks": 0}`},
+		"zero value":   {http.StatusOK, `{"MAX_PARALLEL_CHUNKS": 0}`},
 		"missing key":  {http.StatusOK, `{}`},
 	}
 	for name, tc := range cases {
@@ -100,7 +100,7 @@ func TestAPIFailuresUseFallback(t *testing.T) {
 	}
 
 	t.Run("unreachable", func(t *testing.T) {
-		srv, _ := api(t, http.StatusOK, `{"default_max_parallel_chunks": 9}`)
+		srv, _ := api(t, http.StatusOK, `{"ENV": "dev", "MAX_PARALLEL_CHUNKS": 9}`)
 		url := srv.URL
 		srv.Close()
 		src := Sources{File: filepath.Join(t.TempDir(), DefaultFile), APIURL: url, Fallback: 5}

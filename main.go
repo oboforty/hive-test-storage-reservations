@@ -62,7 +62,7 @@ func run(args []string) error {
 
 	switch cmd {
 	case "serve":
-		return runServe(ctx, args, cfg, log, db)
+		return startServeCmd(ctx, args, cfg, log, db)
 
 	case "migrate":
 		return database.Migrate(ctx, db, log)
@@ -79,7 +79,7 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		details, err := st.AccountDetails(ctx, acc)
+		details, err := st.AccountSummary(ctx, acc)
 		if err != nil {
 			return err
 		}

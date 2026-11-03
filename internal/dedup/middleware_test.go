@@ -3,6 +3,7 @@ package dedup_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -60,14 +61,14 @@ func (h *counting) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.block != nil {
 		<-h.block
 	}
-	dedup.SetModelID(r.Context(), "widget-"+string(rune('0'+n)))
+	dedup.SetModelID(r.Context(), fmt.Sprintf("widget-%d", n))
 	status := h.status
 	if status == 0 {
 		status = http.StatusCreated
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_, _ = w.Write([]byte(`{"call":` + string(rune('0'+n)) + `}`))
+	_, _ = w.Write(fmt.Appendf(nil, `{"call":%d}`, n))
 }
 
 func send(h http.Handler, key, body string) *httptest.ResponseRecorder {

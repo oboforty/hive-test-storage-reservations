@@ -16,8 +16,7 @@ headers {
 
 body:json {
   {
-    "size": 1048576,
-    "debug_log": "created from bruno"
+    "size": 1048576
   }
 }
 
@@ -55,7 +54,7 @@ tests {
 }
 
 docs {
-  `size` (bytes, > 0) is required; `debug_log` is optional. Unknown fields are rejected.
+  `size` (bytes, > 0) is required. Unknown fields are rejected.
 
   A fresh `X-Dedup-ID` is generated on every send and stored in `dedupId`;
   the created id is stored in `reservationId`.

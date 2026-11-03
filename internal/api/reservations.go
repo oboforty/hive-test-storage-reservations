@@ -38,8 +38,7 @@ func (a *API) listAccountReservations(w http.ResponseWriter, r *http.Request) er
 const modelReservation = "storage_reservation"
 
 type createReservationRequest struct {
-	Size     *int64  `json:"size"`
-	DebugLog *string `json:"debug_log,omitempty"`
+	Size *int64 `json:"size"`
 }
 
 // POST /accounts/{accountID}/reservations
@@ -64,7 +63,7 @@ func (a *API) createReservation(w http.ResponseWriter, r *http.Request) error {
 	if key, ok := dedup.KeyFromContext(r.Context()); ok {
 		dedupID = &key
 	}
-	res, err := a.store.CreateReservation(r.Context(), chi.URLParam(r, "accountID"), *req.Size, req.DebugLog, dedupID)
+	res, err := a.store.CreateReservation(r.Context(), chi.URLParam(r, "accountID"), *req.Size, dedupID)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -51,7 +52,7 @@ Prod errors don't leak information
 */
 func TestProdClientErrorsKeepMessage(t *testing.T) {
 	e := newTestEnv(t, config.EnvProd)
-	rec := e.do(http.MethodPost, "/accounts/"+e.account.ID+"/reservations",
+	rec := e.do(http.MethodPost, fmt.Sprintf("/accounts/%s/reservations", e.account.ID),
 		map[string]any{"size": 101 * database.GB})
 	expectStatus(t, rec, http.StatusConflict)
 	body := decode[map[string]any](t, rec)

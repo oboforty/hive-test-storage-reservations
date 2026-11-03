@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -123,7 +124,7 @@ func decode[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 
 func (e *testEnv) reserve(size int64) store.Reservation {
 	e.t.Helper()
-	rec := e.do(http.MethodPost, "/accounts/"+e.account.ID+"/reservations", map[string]any{"size": size})
+	rec := e.do(http.MethodPost, fmt.Sprintf("/accounts/%s/reservations", e.account.ID), map[string]any{"size": size})
 	expectStatus(e.t, rec, http.StatusCreated)
 	return decode[store.Reservation](e.t, rec)
 }

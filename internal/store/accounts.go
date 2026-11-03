@@ -27,12 +27,6 @@ type AccountSummary struct {
 	Usage           float64 `json:"used_percent"`
 }
 
-// AccountDetails is an account summary plus its active reservations.
-type AccountDetails struct {
-	AccountSummary
-	ActiveReservations []Reservation `json:"active_reservations"`
-}
-
 const accountColumns = `id, username, max_storage, max_parallel_chunks, created_at, updated_at, deleted_at`
 
 func scanAccount(row interface{ Scan(...any) error }) (Account, error) {
@@ -53,7 +47,7 @@ func scanAccount(row interface{ Scan(...any) error }) (Account, error) {
 // ListAccounts returns all non-deleted accounts ordered by creation time.
 func (s *Store) ListAccounts(ctx context.Context) ([]Account, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+accountColumns+` FROM accounts WHERE deleted_at IS NULL ORDER BY created_at, id`)
+		fmt.Sprintf(`SELECT %s FROM accounts WHERE deleted_at IS NULL ORDER BY created_at, id`, accountColumns))
 	if err != nil {
 		return nil, fmt.Errorf("list accounts: %w", err)
 	}
@@ -86,7 +80,7 @@ func (s *Store) FindAccount(ctx context.Context, idOrUsername string) (Account, 
 
 func getAccount(ctx context.Context, q querier, where string, arg any) (Account, error) {
 	a, err := scanAccount(q.QueryRowContext(ctx,
-		`SELECT `+accountColumns+` FROM accounts WHERE `+where+` AND deleted_at IS NULL`, arg))
+		fmt.Sprintf(`SELECT %s FROM accounts WHERE %s AND deleted_at IS NULL`, accountColumns, where), arg))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Account{}, fmt.Errorf("account %v: %w", arg, ErrNotFound)
 	}
@@ -125,18 +119,4 @@ func (s *Store) AccountSummary(ctx context.Context, a Account) (AccountSummary, 
 		FreeStorage:     max(a.MaxStorage-reserved, 0),
 		Usage:           pct,
 	}, nil
-}
-
-// AccountDetails is AccountSummary plus the list of active (non-deleted)
-// reservations of the account.
-func (s *Store) AccountDetails(ctx context.Context, a Account) (AccountDetails, error) {
-	summary, err := s.AccountSummary(ctx, a)
-	if err != nil {
-		return AccountDetails{}, err
-	}
-	active, err := s.ListAccountReservations(ctx, a.ID, false)
-	if err != nil {
-		return AccountDetails{}, err
-	}
-	return AccountDetails{AccountSummary: summary, ActiveReservations: active}, nil
 }

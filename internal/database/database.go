@@ -37,7 +37,7 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_txlock", "immediate")
-	dsn := "file:" + path + "?" + q.Encode()
+	dsn := fmt.Sprintf("file:%s?%s", path, q.Encode())
 
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {

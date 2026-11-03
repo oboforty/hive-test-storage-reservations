@@ -39,7 +39,7 @@ func (a *API) getAccount(w http.ResponseWriter, r *http.Request) error {
 	if !httpflag(r, "full") {
 		return a.ok(w, http.StatusOK, acc)
 	}
-	d, err := a.store.AccountDetails(r.Context(), acc)
+	d, err := a.store.AccountSummary(r.Context(), acc)
 	if err != nil {
 		return err
 	}

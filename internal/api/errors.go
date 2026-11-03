@@ -69,7 +69,7 @@ func reportError(r *http.Request, err error) {
 // ErrorMiddleware is the global error handler. It recovers panics and renders
 // any error reported by a handler:
 //   - ENV=PROD: 5xx responses get a generic message; 4xx keep their safe message.
-//   - otherwise: a JSON document with the full error chain, request info and,
+//   - otherwise: a JSON document with the full error chain, request path/query and,
 //     for panics, the stack trace.
 func (a *API) ErrorMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -179,12 +179,10 @@ func (a *API) renderError(w http.ResponseWriter, r *http.Request, err error, sta
 	} else {
 		body = map[string]any{
 			"error":       msg,
-			"status":      status,
 			"detail":      err.Error(),
 			"error_type":  fmt.Sprintf("%T", err),
 			"error_chain": errorChain(err),
 			"request_id":  reqID,
-			"method":      r.Method,
 			"path":        r.URL.Path,
 			"query":       r.URL.RawQuery,
 			"timestamp":   time.Now().UTC(),

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -21,8 +22,8 @@ Reserving logical storage
 func TestCreateReservation(t *testing.T) {
 	e := newTestEnv(t, config.EnvDebug)
 
-	rec := e.do(http.MethodPost, "/accounts/"+e.account.ID+"/reservations",
-		map[string]any{"size": 1024, "debug_log": "hello"})
+	rec := e.do(http.MethodPost, fmt.Sprintf("/accounts/%s/reservations", e.account.ID),
+		map[string]any{"size": 1024})
 	expectStatus(t, rec, http.StatusCreated)
 
 	// Assert - basic field checks
@@ -42,7 +43,7 @@ func TestCreateReservation(t *testing.T) {
 	}
 
 	// Assert - JSON field validation
-	expectStatus(t, e.do(http.MethodPost, "/accounts/"+e.account.ID+"/reservations", `{"size": 1, "foo": 1}`), http.StatusBadRequest)
+	expectStatus(t, e.do(http.MethodPost, fmt.Sprintf("/accounts/%s/reservations", e.account.ID), `{"size": 1, "foo": 1}`), http.StatusBadRequest)
 
 	// Assert - 404 for incorrect account ID
 	expectStatus(t, e.do(http.MethodGet, "/accounts/nope/reservations", nil), http.StatusNotFound)
@@ -53,7 +54,7 @@ Reserving logical storage until account's total size exceeds its configured limi
 */
 func TestCreateReservationExceedsLimit(t *testing.T) {
 	e := newTestEnv(t, config.EnvDebug)
-	path := "/accounts/" + e.account.ID + "/reservations"
+	path := fmt.Sprintf("/accounts/%s/reservations", e.account.ID)
 
 	// Assert - an account must not be able to reserve more than its limit.
 	rec := e.do(http.MethodPost, path, map[string]any{"size": 100*database.GB + 1})
@@ -61,6 +62,14 @@ func TestCreateReservationExceedsLimit(t *testing.T) {
 	body := decode[map[string]any](t, rec)
 	if body["error"] != "insufficient storage" {
 		t.Errorf("unexpected error message: %v", body["error"])
+	}
+
+	// Assert - make sure account started with 0B
+	rec = e.do(http.MethodGet, fmt.Sprintf("/accounts/%s?full=1", e.account.ID), nil)
+	expectStatus(t, rec, http.StatusOK)
+	accountSummaryBefore := decode[store.AccountSummary](t, rec)
+	if accountSummaryBefore.MaxStorage != accountSummaryBefore.FreeStorage || accountSummaryBefore.ReservedStorage != 0 {
+		t.Errorf("expected initial account to be empty. Free storage: %d / %d", accountSummaryBefore.FreeStorage, accountSummaryBefore.MaxStorage)
 	}
 
 	// Arrange - reserve 90 out of 100 GB
@@ -87,21 +96,22 @@ func TestCreateReservationExceedsLimit(t *testing.T) {
 	}
 
 	// Assert - available storage is less than MAX in the summary endpoint
-	rec = e.do(http.MethodDelete, "/accounts/"+e.account.ID+"?full=1", nil)
-	accountSummary := decode[store.AccountSummary](t, rec)
-	if accountSummary.MaxStorage == accountSummary.FreeStorage || accountSummary.ReservedStorage == 0 {
-		t.Errorf("expected some reserved space but got 0. Free storage: %d / %d", accountSummary.FreeStorage, accountSummary.MaxStorage)
+	rec = e.do(http.MethodGet, fmt.Sprintf("/accounts/%s?full=1", e.account.ID), nil)
+	expectStatus(t, rec, http.StatusOK)
+	accountSummaryAfter := decode[store.AccountSummary](t, rec)
+	if accountSummaryAfter.MaxStorage == accountSummaryAfter.FreeStorage || accountSummaryAfter.ReservedStorage == 0 {
+		t.Errorf("expected some reserved space but got 0. Free storage: %d / %d", accountSummaryAfter.FreeStorage, accountSummaryBefore.MaxStorage)
 	}
 
 	// Assert - Releasing space makes room again.
-	expectStatus(t, e.do(http.MethodDelete, path+"/"+list[0].ID, nil), http.StatusOK)
+	expectStatus(t, e.do(http.MethodDelete, fmt.Sprintf("%s/%s", path, list[0].ID), nil), http.StatusOK)
 	e.reserve(10*database.GB + 1)
 }
 
 func TestDeleteReservation(t *testing.T) {
 	e := newTestEnv(t, config.EnvDebug)
 	created := e.reserve(4096)
-	url := "/accounts/" + e.account.ID + "/reservations/" + created.ID
+	url := fmt.Sprintf("/accounts/%s/reservations/%s", e.account.ID, created.ID)
 
 	// Assert - soft delete reservation
 	rec := e.do(http.MethodDelete, url, nil)
@@ -123,16 +133,13 @@ func TestDeleteReservation(t *testing.T) {
 	if decode[store.Reservation](t, rec).DeletedAt == nil {
 		t.Error("reservation should still exist with deleted_at set")
 	}
-	d := decode[store.AccountDetails](t, e.do(http.MethodGet, "/accounts/"+e.account.ID+"?full=1", nil))
-	if d.ReservedStorage != 0 {
-		t.Errorf("expected 0 reserved after delete, got %d", d.ReservedStorage)
-	}
 
 	// Assert - cannot delete 2x
 	expectStatus(t, e.do(http.MethodDelete, url, nil), http.StatusNotFound)
 
 	// Assert - available storage is back at the max
-	rec = e.do(http.MethodDelete, "/accounts/"+e.account.ID+"?full=1", nil)
+	rec = e.do(http.MethodGet, fmt.Sprintf("/accounts/%s?full=1", e.account.ID), nil)
+	expectStatus(t, rec, http.StatusOK)
 	accountSummary := decode[store.AccountSummary](t, rec)
 	if accountSummary.MaxStorage != accountSummary.FreeStorage || accountSummary.ReservedStorage != 0 {
 		t.Errorf("expected 0 reserved space but got %d. Free storage: %d / %d", accountSummary.ReservedStorage, accountSummary.FreeStorage, accountSummary.MaxStorage)
@@ -144,7 +151,7 @@ Concurrent requests must not oversubscribe the account.
 */
 func TestCreateReservationConcurrentLimit(t *testing.T) {
 	e := newTestEnv(t, config.EnvDebug)
-	path := "/accounts/" + e.account.ID + "/reservations"
+	path := fmt.Sprintf("/accounts/%s/reservations", e.account.ID)
 
 	const workers = 20
 	var (
@@ -176,7 +183,7 @@ func TestClearAccountReservations(t *testing.T) {
 	e := newTestEnv(t, config.EnvDebug)
 	e.reserve(1)
 	r := e.reserve(2)
-	expectStatus(t, e.do(http.MethodDelete, "/accounts/"+e.account.ID+"/reservations/"+r.ID, nil), http.StatusOK)
+	expectStatus(t, e.do(http.MethodDelete, fmt.Sprintf("/accounts/%s/reservations/%s", e.account.ID, r.ID), nil), http.StatusOK)
 
 	n, err := e.store.ClearAccountReservations(context.Background(), e.account.ID)
 	if err != nil {
@@ -197,7 +204,7 @@ First request can reserve space, while subsequent ones are denied
 */
 func TestCreateReservationSameDedupIDConcurrent(t *testing.T) {
 	e := newTestEnv(t, config.EnvDebug)
-	path := "/accounts/" + e.account.ID + "/reservations"
+	path := fmt.Sprintf("/accounts/%s/reservations", e.account.ID)
 
 	const rounds, parallel = 10, 3
 	for round := range rounds {
@@ -270,7 +277,7 @@ func TestCreateReservationSameDedupIDConcurrent(t *testing.T) {
 func TestCreateReservationReplay(t *testing.T) {
 	// Arrange - request
 	e := newTestEnv(t, config.EnvDebug)
-	path := "/accounts/" + e.account.ID + "/reservations"
+	path := fmt.Sprintf("/accounts/%s/reservations", e.account.ID)
 	key := uuid.NewString()
 	body := map[string]any{"size": 2048}
 
@@ -316,7 +323,7 @@ A failed request leaves no dedup entry, so the client can retry with the same ke
 */
 func TestDedupKeyManipulation(t *testing.T) {
 	e := newTestEnv(t, config.EnvDebug)
-	path := "/accounts/" + e.account.ID + "/reservations"
+	path := fmt.Sprintf("/accounts/%s/reservations", e.account.ID)
 	dedupkey := uuid.NewString()
 
 	// Assert - valid request
@@ -353,7 +360,7 @@ max_parallel_chunks: limit on the number of active reservations, regardless of s
 func TestCreateReservationExceedsChunkLimit(t *testing.T) {
 	e := newTestEnv(t, config.EnvDebug)
 	e.setChunkLimit(3)
-	path := "/accounts/" + e.account.ID + "/reservations"
+	path := fmt.Sprintf("/accounts/%s/reservations", e.account.ID)
 
 	var first store.Reservation
 	for i := range 3 {
@@ -378,7 +385,7 @@ func TestCreateReservationExceedsChunkLimit(t *testing.T) {
 	}
 
 	// Assert - released reservations don't count toward the limit.
-	expectStatus(t, e.do(http.MethodDelete, path+"/"+first.ID, nil), http.StatusOK)
+	expectStatus(t, e.do(http.MethodDelete, fmt.Sprintf("%s/%s", path, first.ID), nil), http.StatusOK)
 	e.reserve(1)
 	expectStatus(t, e.do(http.MethodPost, path, map[string]any{"size": 1}), http.StatusConflict)
 }
@@ -387,7 +394,7 @@ func TestCreateReservationChunkLimitConcurrent(t *testing.T) {
 	const limit = 3
 	e := newTestEnv(t, config.EnvDebug)
 	e.setChunkLimit(limit)
-	path := "/accounts/" + e.account.ID + "/reservations"
+	path := fmt.Sprintf("/accounts/%s/reservations", e.account.ID)
 
 	// fires n concurrent reservation requests and returns the responses
 	burst := func(n int) []*httptest.ResponseRecorder {
@@ -442,7 +449,7 @@ func TestCreateReservationChunkLimitConcurrent(t *testing.T) {
 
 	// Assert - released reservations don't count toward the limit:
 	// after releasing one, exactly one of the concurrent requests gets the slot.
-	expectStatus(t, e.do(http.MethodDelete, path+"/"+created[0].ID, nil), http.StatusOK)
+	expectStatus(t, e.do(http.MethodDelete, fmt.Sprintf("%s/%s", path, created[0].ID), nil), http.StatusOK)
 	if got := len(split(burst(workers))); got != 1 {
 		t.Errorf("expected exactly 1 reservation after release, got %d", got)
 	}

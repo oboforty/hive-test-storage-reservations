@@ -23,7 +23,6 @@ type API struct {
 	cfg   config.Config
 }
 
-// New creates an API.
 func New(st *store.Store, dd *dedup.Store, log *slog.Logger, cfg config.Config) *API {
 	return &API{store: st, dedup: dd, log: log, cfg: cfg}
 }

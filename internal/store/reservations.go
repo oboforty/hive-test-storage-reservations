@@ -17,7 +17,6 @@ type Reservation struct {
 	Size        int64      `json:"size"`
 	DedupID     *string    `json:"dedup_id"`
 	State       string     `json:"state"`
-	DebugLog    *string    `json:"debug_log"`
 	ErrorLog    *string    `json:"error_log"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   *time.Time `json:"updated_at"`
@@ -25,22 +24,21 @@ type Reservation struct {
 	CompletedAt *time.Time `json:"completed_at"`
 }
 
-const reservationColumns = `id, account_id, size, dedup_id, state, debug_log, error_log,
+const reservationColumns = `id, account_id, size, dedup_id, state, error_log,
 	created_at, updated_at, deleted_at, completed_at`
 
 func scanReservation(row interface{ Scan(...any) error }) (Reservation, error) {
 	var (
 		r                                 Reservation
-		dedupID, debugLog, errorLog       sql.NullString
+		dedupID, errorLog                 sql.NullString
 		updatedAt, deletedAt, completedAt sql.NullTime
 	)
-	if err := row.Scan(&r.ID, &r.AccountID, &r.Size, &dedupID, &r.State, &debugLog, &errorLog,
+	if err := row.Scan(&r.ID, &r.AccountID, &r.Size, &dedupID, &r.State, &errorLog,
 		&r.CreatedAt, &updatedAt, &deletedAt, &completedAt); err != nil {
 		return Reservation{}, err
 	}
 	r.CreatedAt = r.CreatedAt.UTC()
 	r.DedupID = nullStringPtr(dedupID)
-	r.DebugLog = nullStringPtr(debugLog)
 	r.ErrorLog = nullStringPtr(errorLog)
 	r.UpdatedAt = nullTimePtr(updatedAt)
 	r.DeletedAt = nullTimePtr(deletedAt)
@@ -50,7 +48,7 @@ func scanReservation(row interface{ Scan(...any) error }) (Reservation, error) {
 
 func (s *Store) queryReservations(ctx context.Context, q querier, where string, args ...any) ([]Reservation, error) {
 	rows, err := q.QueryContext(ctx,
-		`SELECT `+reservationColumns+` FROM storage_reservations WHERE `+where+` ORDER BY created_at, id`, args...)
+		fmt.Sprintf(`SELECT %s FROM storage_reservations WHERE %s ORDER BY created_at, id`, reservationColumns, where), args...)
 	if err != nil {
 		return nil, fmt.Errorf("list reservations: %w", err)
 	}
@@ -81,7 +79,7 @@ func (s *Store) ListReservations(ctx context.Context, includeDeleted bool) ([]Re
 
 // ListAccountReservations returns reservations of a single account.
 func (s *Store) ListAccountReservations(ctx context.Context, accountID string, includeDeleted bool) ([]Reservation, error) {
-	return s.queryReservations(ctx, s.db, `account_id = ? AND `+deletedFilter(includeDeleted), accountID)
+	return s.queryReservations(ctx, s.db, fmt.Sprintf(`account_id = ? AND %s`, deletedFilter(includeDeleted)), accountID)
 }
 
 // GetReservation returns a reservation that belongs to the given account.
@@ -92,7 +90,7 @@ func (s *Store) GetReservation(ctx context.Context, accountID, reservationID str
 
 func getReservation(ctx context.Context, q querier, accountID, reservationID string) (Reservation, error) {
 	r, err := scanReservation(q.QueryRowContext(ctx,
-		`SELECT `+reservationColumns+` FROM storage_reservations WHERE id = ? AND account_id = ?`,
+		fmt.Sprintf(`SELECT %s FROM storage_reservations WHERE id = ? AND account_id = ?`, reservationColumns),
 		reservationID, accountID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Reservation{}, fmt.Errorf("reservation %s: %w", reservationID, ErrNotFound)
@@ -123,7 +121,7 @@ func insertHistory(ctx context.Context, q querier, r Reservation, op, lastState 
 //
 // dedupID (optional) links the reservation to the dedup entry of the request
 // that created it.
-func (s *Store) CreateReservation(ctx context.Context, accountID string, size int64, debugLog, dedupID *string) (Reservation, error) {
+func (s *Store) CreateReservation(ctx context.Context, accountID string, size int64, dedupID *string) (Reservation, error) {
 	if size <= 0 {
 		return Reservation{}, fmt.Errorf("size must be a positive number of bytes: %w", ErrInvalidInput)
 	}
@@ -135,7 +133,6 @@ func (s *Store) CreateReservation(ctx context.Context, accountID string, size in
 		Size:      size,
 		DedupID:   dedupID,
 		State:     StatePending,
-		DebugLog:  debugLog,
 		CreatedAt: now,
 	}
 
@@ -163,9 +160,9 @@ func (s *Store) CreateReservation(ctx context.Context, accountID string, size in
 		}
 
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO storage_reservations (id, account_id, size, dedup_id, state, debug_log, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			r.ID, r.AccountID, r.Size, r.DedupID, r.State, r.DebugLog, r.CreatedAt); err != nil {
+			INSERT INTO storage_reservations (id, account_id, size, dedup_id, state, created_at)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+			r.ID, r.AccountID, r.Size, r.DedupID, r.State, r.CreatedAt); err != nil {
 			return fmt.Errorf("insert reservation: %w", err)
 		}
 		return insertHistory(ctx, tx, r, OpReserve, r.State, now)

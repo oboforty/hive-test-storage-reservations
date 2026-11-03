@@ -18,9 +18,8 @@ import (
 	"github.com/oboforty/hiveproj/internal/store"
 )
 
-// runServe implements the "serve" command: parses its flags, optionally
-// migrates/seeds the database, then runs the HTTP server.
-func runServe(ctx context.Context, args []string, cfg config.Config, log *slog.Logger, db *sql.DB) error {
+// migrate & seed the DB, then start serving
+func startServeCmd(ctx context.Context, args []string, cfg config.Config, log *slog.Logger, db *sql.DB) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	migrate := fs.Bool("migrate", false, "apply migrations before starting")
 	seed := fs.Bool("seed", false, "seed the database before starting (implies -migrate)")
@@ -40,8 +39,6 @@ func runServe(ctx context.Context, args []string, cfg config.Config, log *slog.L
 	return serve(ctx, cfg, log, db)
 }
 
-// serve runs the HTTP server. Startup and shutdown each run in their own
-// goroutine; serve returns once the server has fully stopped.
 func serve(ctx context.Context, cfg config.Config, log *slog.Logger, db *sql.DB) error {
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -56,8 +53,8 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger, db *sql.DB)
 
 	serverErr := make(chan error, 1)
 	shutdownDone := make(chan error, 1)
+	startupFailed := make(chan struct{})
 
-	// Startup handler.
 	go func() {
 		ln, err := net.Listen("tcp", cfg.HTTPAddr)
 		if err != nil {
@@ -72,28 +69,8 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger, db *sql.DB)
 		serverErr <- nil
 	}()
 
-	// Shutdown handler: waits for a signal (ctx cancelled) or a startup
-	// failure, then drains in-flight requests within ShutdownTimeout.
-	startupFailed := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			log.Info("shutdown signal received, draining connections", "timeout", cfg.ShutdownTimeout)
-		case <-startupFailed:
-			shutdownDone <- nil
-			return
-		}
-		shCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-		defer cancel()
-		if err := srv.Shutdown(shCtx); err != nil {
-			log.Error("graceful shutdown failed, forcing close", "err", err)
-			_ = srv.Close()
-			shutdownDone <- err
-			return
-		}
-		shutdownDone <- nil
-	}()
-
+	// shutdown handler
+	go shutdown(ctx, srv, cfg, log, startupFailed, shutdownDone)
 	if err := <-serverErr; err != nil {
 		close(startupFailed)
 		<-shutdownDone
@@ -105,4 +82,24 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger, db *sql.DB)
 	}
 	log.Info("server stopped")
 	return nil
+}
+
+// drains in-flight requests within a deadline
+func shutdown(ctx context.Context, srv *http.Server, cfg config.Config, log *slog.Logger, startupFailed <-chan struct{}, shutdownDone chan<- error) {
+	select {
+	case <-ctx.Done():
+		log.Info("shutdown signal received, draining connections", "timeout", cfg.ShutdownTimeout)
+	case <-startupFailed:
+		shutdownDone <- nil
+		return
+	}
+	shCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shCtx); err != nil {
+		log.Error("graceful shutdown failed, forcing close", "err", err)
+		_ = srv.Close()
+		shutdownDone <- err
+		return
+	}
+	shutdownDone <- nil
 }

@@ -19,10 +19,15 @@ import (
 // DefaultFile is the default path of the local settings file.
 const DefaultFile = "hivesettings.json"
 
-// Settings is the content of hivesettings.json, and the expected JSON
-// response of HIVE_API.
+// Settings is the content of hivesettings.json.
 type Settings struct {
 	DefaultMaxParallelChunks int `json:"default_max_parallel_chunks"`
+}
+
+// apiResponse is the subset of the HIVE_API JSON response we use. The API
+// returns many other (ignored) keys.
+type apiResponse struct {
+	MaxParallelChunks int `json:"MAX_PARALLEL_CHUNKS"`
 }
 
 // Sources configures where GetDefaultMaxParallelChunks looks.
@@ -96,6 +101,17 @@ func decode(r io.Reader) (Settings, error) {
 	return s, s.validate()
 }
 
+func decodeAPI(r io.Reader) (Settings, error) {
+	var a apiResponse
+	if err := json.NewDecoder(io.LimitReader(r, 1<<20)).Decode(&a); err != nil {
+		return Settings{}, fmt.Errorf("decode HIVE_API response: %w", err)
+	}
+	if a.MaxParallelChunks <= 0 {
+		return Settings{}, fmt.Errorf("HIVE_API MAX_PARALLEL_CHUNKS must be > 0, got %d", a.MaxParallelChunks)
+	}
+	return Settings{DefaultMaxParallelChunks: a.MaxParallelChunks}, nil
+}
+
 func readFile(path string) (Settings, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -122,7 +138,7 @@ func fetch(ctx context.Context, client *http.Client, url string) (Settings, erro
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return Settings{}, fmt.Errorf("unexpected status %s", resp.Status)
 	}
-	return decode(resp.Body)
+	return decodeAPI(resp.Body)
 }
 
 // writeFile writes atomically (temp file + rename) so a crash never leaves a
