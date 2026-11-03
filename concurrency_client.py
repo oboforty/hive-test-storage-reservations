@@ -1,19 +1,4 @@
 #!/usr/bin/env python3
-"""Fire concurrent reservation requests and check the account is never oversubscribed.
-
-Usage:
-    python concurrency_client.py --calls 10
-
-See argparse code for optional parameters.
-
-Notes:
-  * The account's max_parallel_chunks (default 5) also limits active reservations.
-    If it is lower than the number of reservations that fit into the free space, it
-    is reached before the storage limit.
-  * The API rate-limits each client IP (RATE_LIMIT, default 10/s), so some requests
-    may get a 429. Run the server with RATE_LIMIT=0 to avoid that.
-"""
-
 import argparse
 import json
 import random
@@ -47,24 +32,46 @@ def request(method, url, body=None, dedup=False):
         return status, raw.decode(errors="replace")
 
 
-def find_account(base, account):
+def find_account_by_username(base, account):
     status, accounts = request("GET", f"{base}/accounts")
     if status != 200:
         sys.exit(f"GET /accounts failed with {status}: {accounts}")
+
     for acc in accounts:
         if account in (acc["id"], acc["username"]):
             return acc["id"]
     sys.exit(f"account {account!r} not found")
 
 
-def summary(base, account_id):
-    status, body = request("GET", f"{base}/accounts/{account_id}?full=1")
+
+def print_account(base, account_id):
+    status, acc_data = request("GET", f"{base}/accounts/{account_id}?full=1")
     if status != 200:
-        sys.exit(f"GET account summary failed with {status}: {body}")
-    return body
+        sys.exit(f"GET account summary failed with {status}: {acc_data}")
+
+    print(f"\n   [Account '{acc_data['username']}' {account_id}]\n   "
+          f"max {acc_data['max_storage'] / GB:.2f} GiB, free {acc_data['free_storage'] / GB:.2f} GiB, "
+          f"max_parallel_chunks {acc_data['max_parallel_chunks']}\n")
+
+    return acc_data
 
 
 def main():
+    """Fire concurrent reservation requests and check the account is never oversubscribed.
+
+    Usage:
+        python concurrency_client.py --calls 10
+
+    See argparse code for optional parameters.
+
+    Notes:
+    * The account's max_parallel_chunks (default 5) also limits active reservations.
+        If it is lower than the number of reservations that fit into the free space, it
+        is reached before the storage limit.
+    * The API rate-limits each client IP (RATE_LIMIT, default 10/s), so some requests
+        may get a 429. Run the server with RATE_LIMIT=0 to avoid that.
+    """
+
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--url", default="http://127.0.0.1:8080", help="API base URL")
     p.add_argument("--account", default="hive", help="account id or username")
@@ -75,19 +82,15 @@ def main():
     args = p.parse_args()
     base = args.url.rstrip("/")
 
-    account_id = find_account(base, args.account)
+    account_id = find_account_by_username(base, args.account)
+
     if args.reset:
         status, body = request("DELETE", f"{base}/accounts/{account_id}/reservations", dedup=True)
         if status != 200:
             sys.exit(f"reset failed with {status}: {body}")
         print(f"reset: released {body['released']} reservation(s)")
 
-    before = summary(base, account_id)
-    free_before = before["free_storage"]
-    print(f"account {before['username']} ({account_id}): "
-          f"max {before['max_storage'] / GB:.2f} GiB, free {free_before / GB:.2f} GiB, "
-          f"max_parallel_chunks {before['max_parallel_chunks']}, "
-          f"active reservations {len(before['active_reservations'])}")
+    before = print_account(base, account_id)
 
     sizes = [random.randint(int(args.min_gb * GB), int(args.max_gb * GB)) for _ in range(args.calls)]
     results = [None] * args.calls
@@ -121,7 +124,6 @@ def main():
         else:
             unexpected.append((size, status, body))
 
-    after = summary(base, account_id)
     accepted_total = sum(accepted)
 
     print(f"\nsent {args.calls} requests, total {sum(sizes) / GB:.2f} GiB")
@@ -130,12 +132,12 @@ def main():
     print(f"  409 too many reservations:     {len(too_many):3d}")
     print(f"  429 rate limited:              {len(rate_limited):3d}")
     print(f"  other:                         {len(unexpected):3d}")
-    print(f"reserved {after['reserved_storage'] / GB:.2f} / {after['max_storage'] / GB:.2f} GiB, "
-          f"free {after['free_storage'] / GB:.2f} GiB")
+
+    after = print_account(base, account_id)
 
     failures = []
-    if accepted_total > free_before:
-        failures.append(f"accepted {accepted_total} bytes but only {free_before} were free")
+    if accepted_total > before['free_storage']:
+        failures.append(f"accepted {accepted_total} bytes but only {before['free_storage']} were free")
     if after["reserved_storage"] - before["reserved_storage"] != accepted_total:
         failures.append(f"reserved storage grew by {after['reserved_storage'] - before['reserved_storage']} "
                         f"bytes, accepted total is {accepted_total}")
